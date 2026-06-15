@@ -9,6 +9,7 @@ GrooveStationEditor::GrooveStationEditor (GrooveStationProcessor& p)
       mixerPanel (p.getSamplerEngine()),
       effectsPanel (p.getSamplerEngine()),
       sequencerGrid (p.getStepSequencer(), p.getSamplerEngine()),
+      soundBrowser (p.getSamplerEngine()),
       keyboard (keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard)
 {
     setLookAndFeel (&customLookAndFeel);
@@ -30,6 +31,7 @@ GrooveStationEditor::GrooveStationEditor (GrooveStationProcessor& p)
     addAndMakeVisible (mixerPanel);
     addAndMakeVisible (effectsPanel);
     addAndMakeVisible (sequencerGrid);
+    addAndMakeVisible (soundBrowser);
     addAndMakeVisible (keyboard);
 
     // Keyboard styling
@@ -39,18 +41,32 @@ GrooveStationEditor::GrooveStationEditor (GrooveStationProcessor& p)
     keyboard.setColour (juce::MidiKeyboardComponent::keySeparatorLineColourId, Colours_::surfaceLight);
     keyboard.setOctaveForMiddleC (3);
 
-    // Callbacks
-    padGrid.onPadSelected = [this] (int pad) { onPadSelected (pad); };
-    padGrid.onSampleLoaded = [this] (int pad)
+    // Pad selected callback: update all panels with absolute pad index
+    padGrid.onPadSelected = [this] (int absPad) { onPadSelected (absPad); };
+    padGrid.onSampleLoaded = [this] (int absPad)
     {
-        onPadSelected (pad);
+        onPadSelected (absPad);
         waveformDisplay.repaint();
+    };
+
+    // Bank changed: update sequencer grid
+    padGrid.onBankChanged = [this] (int /*bank*/)
+    {
+        sequencerGrid.repaint();
     };
 
     mixerPanel.onParametersChanged = [this]
     {
         waveformDisplay.repaint();
         padGrid.repaint();
+    };
+
+    // Sound browser: loaded file triggers pad update
+    soundBrowser.onSampleLoaded = [this] (int absPad)
+    {
+        onPadSelected (absPad);
+        padGrid.repaint();
+        waveformDisplay.repaint();
     };
 
     // Initial state
@@ -66,13 +82,10 @@ void GrooveStationEditor::paint (juce::Graphics& g)
 {
     g.fillAll (Colours_::background);
 
-    // Subtle grid lines / section borders
-    g.setColour (Colours_::surfaceLight.withAlpha (0.3f));
-
     // Version info
     g.setColour (Colours_::textSecondary.withAlpha (0.4f));
     g.setFont (9.0f);
-    g.drawText ("v1.0.0", getLocalBounds().reduced (8), juce::Justification::bottomRight);
+    g.drawText ("v1.1.0", getLocalBounds().reduced (8), juce::Justification::bottomRight);
 }
 
 void GrooveStationEditor::resized()
@@ -90,9 +103,9 @@ void GrooveStationEditor::resized()
     keyboard.setBounds (area.removeFromBottom (50));
 
     // Sequencer grid in lower portion
-    sequencerGrid.setBounds (area.removeFromBottom (area.getHeight() * 35 / 100));
+    sequencerGrid.setBounds (area.removeFromBottom (area.getHeight() * 30 / 100));
 
-    // Remaining area split: left = pads + waveform, right = mixer + effects
+    // Remaining area: left side = sound browser + pads + waveform, right = mixer + effects
     auto mainArea = area;
 
     // Right side: mixer and effects panels
@@ -100,7 +113,11 @@ void GrooveStationEditor::resized()
     mixerPanel.setBounds (rightPanel.removeFromTop (rightPanel.getHeight() / 2));
     effectsPanel.setBounds (rightPanel);
 
-    // Left side: pad grid and waveform
+    // Left side split: sound browser on far left, pad grid + waveform in center
+    auto soundBrowserArea = mainArea.removeFromLeft (juce::jmin (220, mainArea.getWidth() / 4));
+    soundBrowser.setBounds (soundBrowserArea);
+
+    // Center: waveform on top, pad grid below
     auto leftPanel = mainArea;
     waveformDisplay.setBounds (leftPanel.removeFromTop (leftPanel.getHeight() * 30 / 100));
     padGrid.setBounds (leftPanel);
@@ -112,4 +129,5 @@ void GrooveStationEditor::onPadSelected (int padIndex)
     mixerPanel.updateForPad (padIndex);
     effectsPanel.updateForPad (padIndex);
     sequencerGrid.setSelectedPad (padIndex);
+    soundBrowser.setTargetPad (padIndex);
 }

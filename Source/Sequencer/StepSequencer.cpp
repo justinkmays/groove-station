@@ -104,7 +104,8 @@ void StepSequencer::advanceStep()
             // Probability gate
             if (step.probability >= 1.0f || random.nextFloat() < step.probability)
             {
-                samplerEngine.triggerPad (pad, step.velocity);
+                int absPad = samplerEngine.absolutePadIndex (pad);
+                samplerEngine.triggerPad (absPad, step.velocity);
             }
         }
     }

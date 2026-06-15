@@ -198,7 +198,7 @@ void EffectsPanel::resized()
 
 void EffectsPanel::updateForPad (int padIndex)
 {
-    currentPad = juce::jlimit (0, SamplerEngine::NUM_PADS - 1, padIndex);
+    currentPad = juce::jlimit (0, SamplerEngine::TOTAL_PADS - 1, padIndex);
     updateSlidersFromEngine();
 }
 

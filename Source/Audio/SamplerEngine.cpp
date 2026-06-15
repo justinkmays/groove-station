@@ -4,7 +4,7 @@ SamplerEngine::SamplerEngine()
 {
     formatManager.registerBasicFormats();
 
-    for (int pad = 0; pad < NUM_PADS; ++pad)
+    for (int pad = 0; pad < TOTAL_PADS; ++pad)
     {
         for (int v = 0; v < VOICES_PER_PAD; ++v)
             synthesisers[pad].addVoice (new SampleVoice());
@@ -18,7 +18,7 @@ void SamplerEngine::prepare (double sampleRate, int samplesPerBlock)
     currentSampleRate = sampleRate;
     currentBlockSize = samplesPerBlock;
 
-    for (int pad = 0; pad < NUM_PADS; ++pad)
+    for (int pad = 0; pad < TOTAL_PADS; ++pad)
     {
         synthesisers[pad].setCurrentPlaybackSampleRate (sampleRate);
         padEffects[pad].prepare (sampleRate, samplesPerBlock);
@@ -28,9 +28,22 @@ void SamplerEngine::prepare (double sampleRate, int samplesPerBlock)
     padBuffer.setSize (2, samplesPerBlock);
 }
 
+void SamplerEngine::setCurrentBank (int bank)
+{
+    currentBank = juce::jlimit (0, NUM_BANKS - 1, bank);
+}
+
+juce::String SamplerEngine::getBankName (int bank) const
+{
+    const char names[] = { 'A', 'B', 'C', 'D' };
+    if (bank >= 0 && bank < NUM_BANKS)
+        return juce::String::charToString (names[bank]);
+    return "?";
+}
+
 bool SamplerEngine::loadSample (int padIndex, const juce::File& file)
 {
-    if (padIndex < 0 || padIndex >= NUM_PADS)
+    if (padIndex < 0 || padIndex >= TOTAL_PADS)
         return false;
 
     std::unique_ptr<juce::AudioFormatReader> reader (formatManager.createReaderFor (file));
@@ -39,7 +52,6 @@ bool SamplerEngine::loadSample (int padIndex, const juce::File& file)
 
     int midiNote = BASE_MIDI_NOTE + padIndex;
 
-    // Clear existing sounds
     synthesisers[padIndex].clearSounds();
 
     auto* sound = new SampleSound (file.getFileNameWithoutExtension(), *reader, midiNote);
@@ -56,7 +68,7 @@ bool SamplerEngine::loadSample (int padIndex, const juce::File& file)
 
 void SamplerEngine::clearSample (int padIndex)
 {
-    if (padIndex < 0 || padIndex >= NUM_PADS)
+    if (padIndex < 0 || padIndex >= TOTAL_PADS)
         return;
 
     synthesisers[padIndex].clearSounds();
@@ -66,7 +78,7 @@ void SamplerEngine::clearSample (int padIndex)
 
 void SamplerEngine::triggerPad (int padIndex, float velocity)
 {
-    if (padIndex < 0 || padIndex >= NUM_PADS || ! hasSample (padIndex))
+    if (padIndex < 0 || padIndex >= TOTAL_PADS || ! hasSample (padIndex))
         return;
 
     if (padStates[padIndex].mute)
@@ -78,7 +90,7 @@ void SamplerEngine::triggerPad (int padIndex, float velocity)
 
 void SamplerEngine::releasePad (int padIndex)
 {
-    if (padIndex < 0 || padIndex >= NUM_PADS)
+    if (padIndex < 0 || padIndex >= TOTAL_PADS)
         return;
 
     int midiNote = BASE_MIDI_NOTE + padIndex;
@@ -87,7 +99,7 @@ void SamplerEngine::releasePad (int padIndex)
 
 void SamplerEngine::updatePadParameters (int padIndex)
 {
-    if (padIndex < 0 || padIndex >= NUM_PADS)
+    if (padIndex < 0 || padIndex >= TOTAL_PADS)
         return;
 
     auto& state = padStates[padIndex];
@@ -111,14 +123,14 @@ void SamplerEngine::updatePadParameters (int padIndex)
 
 bool SamplerEngine::hasSample (int padIndex) const
 {
-    if (padIndex < 0 || padIndex >= NUM_PADS)
+    if (padIndex < 0 || padIndex >= TOTAL_PADS)
         return false;
     return synthesisers[padIndex].getNumSounds() > 0;
 }
 
 juce::AudioBuffer<float>* SamplerEngine::getSampleBuffer (int padIndex)
 {
-    if (padIndex < 0 || padIndex >= NUM_PADS)
+    if (padIndex < 0 || padIndex >= TOTAL_PADS)
         return nullptr;
 
     if (auto* sound = dynamic_cast<SampleSound*> (synthesisers[padIndex].getSound (0).get()))
@@ -129,7 +141,7 @@ juce::AudioBuffer<float>* SamplerEngine::getSampleBuffer (int padIndex)
 
 double SamplerEngine::getSampleRate (int padIndex) const
 {
-    if (padIndex < 0 || padIndex >= NUM_PADS)
+    if (padIndex < 0 || padIndex >= TOTAL_PADS)
         return currentSampleRate;
 
     if (auto* sound = dynamic_cast<SampleSound*> (synthesisers[padIndex].getSound (0).get()))
@@ -140,7 +152,7 @@ double SamplerEngine::getSampleRate (int padIndex) const
 
 int SamplerEngine::getSampleLengthSamples (int padIndex) const
 {
-    if (padIndex < 0 || padIndex >= NUM_PADS)
+    if (padIndex < 0 || padIndex >= TOTAL_PADS)
         return 0;
 
     if (auto* sound = dynamic_cast<SampleSound*> (synthesisers[padIndex].getSound (0).get()))
@@ -153,22 +165,20 @@ void SamplerEngine::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
 {
     buffer.clear();
 
-    // Check for solo
+    // Check for solo across ALL pads (all banks)
     bool anySolo = false;
-    for (int pad = 0; pad < NUM_PADS; ++pad)
+    for (int pad = 0; pad < TOTAL_PADS; ++pad)
         if (padStates[pad].solo) { anySolo = true; break; }
 
-    for (int pad = 0; pad < NUM_PADS; ++pad)
+    for (int pad = 0; pad < TOTAL_PADS; ++pad)
     {
         if (! hasSample (pad)) continue;
         if (padStates[pad].mute) continue;
         if (anySolo && ! padStates[pad].solo) continue;
 
-        // Render each pad into its own buffer
         padBuffer.setSize (buffer.getNumChannels(), buffer.getNumSamples(), false, false, true);
         padBuffer.clear();
 
-        // Route MIDI for this pad
         juce::MidiBuffer padMidi;
         int midiNote = BASE_MIDI_NOTE + pad;
 
@@ -181,18 +191,14 @@ void SamplerEngine::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
 
         synthesisers[pad].renderNextBlock (padBuffer, padMidi, 0, padBuffer.getNumSamples());
 
-        // Per-pad effects
         padEffects[pad].process (padBuffer);
 
-        // Mix into main buffer
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
             buffer.addFrom (ch, 0, padBuffer, ch, 0, buffer.getNumSamples());
     }
 
-    // Master effects
     masterEffects.process (buffer);
 
-    // Master volume
     float masterGain = juce::Decibels::decibelsToGain (masterVolume);
     buffer.applyGain (masterGain);
 }

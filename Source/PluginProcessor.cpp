@@ -50,7 +50,11 @@ void GrooveStationProcessor::getStateInformation (juce::MemoryBlock& destData)
     auto xml = std::make_unique<juce::XmlElement> ("GrooveStationState");
 
     // Save pad states
-    for (int i = 0; i < SamplerEngine::NUM_PADS; ++i)
+    // Save current bank
+    xml->setAttribute ("currentBank", samplerEngine.getCurrentBank());
+
+    // Save all pad states across all banks
+    for (int i = 0; i < SamplerEngine::TOTAL_PADS; ++i)
     {
         auto& state = samplerEngine.getPadState (i);
         auto* padXml = xml->createNewChildElement ("Pad");
@@ -113,7 +117,7 @@ void GrooveStationProcessor::setStateInformation (const void* data, int sizeInBy
     for (auto* padXml : xml->getChildWithTagNameIterator ("Pad"))
     {
         int index = padXml->getIntAttribute ("index", -1);
-        if (index < 0 || index >= SamplerEngine::NUM_PADS) continue;
+        if (index < 0 || index >= SamplerEngine::TOTAL_PADS) continue;
 
         juce::String filePath = padXml->getStringAttribute ("filePath");
         if (filePath.isNotEmpty())
@@ -138,6 +142,9 @@ void GrooveStationProcessor::setStateInformation (const void* data, int sizeInBy
 
         samplerEngine.updatePadParameters (index);
     }
+
+    // Restore bank
+    samplerEngine.setCurrentBank (xml->getIntAttribute ("currentBank", 0));
 
     // Restore sequencer
     if (auto* seqXml = xml->getChildByName ("Sequencer"))

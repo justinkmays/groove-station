@@ -134,7 +134,10 @@ void MixerPanel::paint (juce::Graphics& g)
     g.setFont (juce::Font (11.0f).boldened());
 
     auto area = getLocalBounds().reduced (8, 0);
-    g.drawText ("PAD " + juce::String (currentPad + 1), area.removeFromTop (20), juce::Justification::centredLeft);
+    int bank = currentPad / SamplerEngine::PADS_PER_BANK;
+    int localPad = currentPad % SamplerEngine::PADS_PER_BANK;
+    g.drawText ("PAD " + engine.getBankName (bank) + juce::String (localPad + 1),
+               area.removeFromTop (20), juce::Justification::centredLeft);
 
     // Divider lines
     g.setColour (Colours_::surfaceLight);
@@ -206,7 +209,7 @@ void MixerPanel::resized()
 
 void MixerPanel::updateForPad (int padIndex)
 {
-    currentPad = juce::jlimit (0, SamplerEngine::NUM_PADS - 1, padIndex);
+    currentPad = juce::jlimit (0, SamplerEngine::TOTAL_PADS - 1, padIndex);
     updateSlidersFromEngine();
     repaint();
 }

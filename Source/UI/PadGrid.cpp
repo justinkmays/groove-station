@@ -3,60 +3,71 @@
 PadGrid::PadGrid (SamplerEngine& eng) : engine (eng)
 {
     setMouseCursor (juce::MouseCursor::PointingHandCursor);
+
+    for (int b = 0; b < SamplerEngine::NUM_BANKS; ++b)
+    {
+        bankButtons[b].setButtonText (engine.getBankName (b));
+        bankButtons[b].onClick = [this, b]
+        {
+            engine.setCurrentBank (b);
+            updateBankButtonColours();
+            if (onBankChanged) onBankChanged (b);
+            repaint();
+        };
+        addAndMakeVisible (bankButtons[b]);
+    }
+    updateBankButtonColours();
 }
 
 void PadGrid::paint (juce::Graphics& g)
 {
     g.fillAll (Colours_::background);
 
-    for (int i = 0; i < SamplerEngine::NUM_PADS; ++i)
+    auto gridArea = getGridArea();
+    int bank = engine.getCurrentBank();
+
+    for (int i = 0; i < SamplerEngine::PADS_PER_BANK; ++i)
     {
+        int absPad = engine.absolutePadIndex (bank, i);
         auto bounds = getPadBounds (i).toFloat();
 
-        // Pad colour
         juce::Colour padColour = Colours_::padOff;
-        if (i == selectedPad)
+        if (absPad == selectedPad)
             padColour = Colours_::accent;
-        else if (engine.hasSample (i))
+        else if (engine.hasSample (absPad))
             padColour = Colours_::surfaceLight;
 
         if (i == hoveredPad)
             padColour = padColour.brighter (0.15f);
 
-        // Draw pad with rounded corners
         g.setColour (padColour);
         g.fillRoundedRectangle (bounds.reduced (2.0f), 6.0f);
 
-        // Border
         g.setColour (padColour.brighter (0.2f));
         g.drawRoundedRectangle (bounds.reduced (2.0f), 6.0f, 1.0f);
 
-        // Pad number
+        // Pad number (bank-relative, 1-indexed)
         g.setColour (Colours_::textSecondary);
         g.setFont (11.0f);
-        g.drawText (juce::String (i + 1), bounds.reduced (6.0f),
-                     juce::Justification::topLeft);
+        g.drawText (engine.getBankName (bank) + juce::String (i + 1),
+                     bounds.reduced (6.0f), juce::Justification::topLeft);
 
-        // Sample name
-        if (engine.hasSample (i))
+        if (engine.hasSample (absPad))
         {
             g.setColour (Colours_::textPrimary);
             g.setFont (10.0f);
-            auto name = engine.getPadState (i).sampleName;
+            auto name = engine.getPadState (absPad).sampleName;
             if (name.length() > 12) name = name.substring (0, 10) + "..";
-            g.drawText (name, bounds.reduced (4.0f),
-                         juce::Justification::centred);
+            g.drawText (name, bounds.reduced (4.0f), juce::Justification::centred);
         }
         else
         {
             g.setColour (Colours_::textSecondary.withAlpha (0.4f));
             g.setFont (9.0f);
-            g.drawText ("Drop\nSample", bounds.reduced (4.0f),
-                         juce::Justification::centred);
+            g.drawText ("Drop\nSample", bounds.reduced (4.0f), juce::Justification::centred);
         }
 
-        // Mute/Solo indicators
-        auto& state = engine.getPadState (i);
+        auto& state = engine.getPadState (absPad);
         if (state.mute)
         {
             g.setColour (Colours_::muteColour);
@@ -69,35 +80,42 @@ void PadGrid::paint (juce::Graphics& g)
         }
     }
 
-    // Drag-over overlay
     if (dragOver)
     {
         g.setColour (Colours_::accent.withAlpha (0.2f));
-        g.fillAll();
+        g.fillRect (gridArea);
         g.setColour (Colours_::accent);
-        g.drawRect (getLocalBounds(), 2);
+        g.drawRect (gridArea, 2);
     }
 }
 
 void PadGrid::resized()
 {
+    auto area = getLocalBounds();
+
+    // Bank buttons at the top
+    auto bankBar = area.removeFromTop (28);
+    int btnW = bankBar.getWidth() / SamplerEngine::NUM_BANKS;
+    for (int b = 0; b < SamplerEngine::NUM_BANKS; ++b)
+        bankButtons[b].setBounds (bankBar.removeFromLeft (btnW).reduced (2));
 }
 
 void PadGrid::mouseDown (const juce::MouseEvent& e)
 {
-    int pad = getPadAtPosition (e.x, e.y);
-    if (pad >= 0)
+    int localPad = getPadAtPosition (e.x, e.y);
+    if (localPad >= 0)
     {
-        setSelectedPad (pad);
-        engine.triggerPad (pad, 0.8f);
+        int absPad = engine.absolutePadIndex (localPad);
+        setSelectedPad (absPad);
+        engine.triggerPad (absPad, 0.8f);
     }
 }
 
 void PadGrid::mouseUp (const juce::MouseEvent& e)
 {
-    int pad = getPadAtPosition (e.x, e.y);
-    if (pad >= 0)
-        engine.releasePad (pad);
+    int localPad = getPadAtPosition (e.x, e.y);
+    if (localPad >= 0)
+        engine.releasePad (engine.absolutePadIndex (localPad));
 }
 
 bool PadGrid::isInterestedInFileDrag (const juce::StringArray& files)
@@ -115,19 +133,21 @@ bool PadGrid::isInterestedInFileDrag (const juce::StringArray& files)
 void PadGrid::filesDropped (const juce::StringArray& files, int x, int y)
 {
     dragOver = false;
-    int pad = getPadAtPosition (x, y);
-    if (pad < 0) pad = selectedPad;
+    int localPad = getPadAtPosition (x, y);
+    if (localPad < 0) localPad = selectedPad - engine.getCurrentBank() * SamplerEngine::PADS_PER_BANK;
+    if (localPad < 0) localPad = 0;
 
     for (auto& f : files)
     {
-        if (pad >= SamplerEngine::NUM_PADS) break;
+        if (localPad >= SamplerEngine::PADS_PER_BANK) break;
 
+        int absPad = engine.absolutePadIndex (localPad);
         juce::File file (f);
-        if (engine.loadSample (pad, file))
+        if (engine.loadSample (absPad, file))
         {
             if (onSampleLoaded)
-                onSampleLoaded (pad);
-            pad++;
+                onSampleLoaded (absPad);
+            localPad++;
         }
     }
     repaint();
@@ -145,9 +165,18 @@ void PadGrid::fileDragExit (const juce::StringArray&)
     repaint();
 }
 
-void PadGrid::setSelectedPad (int pad)
+void PadGrid::setSelectedPad (int absolutePadIndex)
 {
-    selectedPad = juce::jlimit (0, SamplerEngine::NUM_PADS - 1, pad);
+    selectedPad = juce::jlimit (0, SamplerEngine::TOTAL_PADS - 1, absolutePadIndex);
+
+    // Switch bank if the selected pad is in a different bank
+    int bank = selectedPad / SamplerEngine::PADS_PER_BANK;
+    if (bank != engine.getCurrentBank())
+    {
+        engine.setCurrentBank (bank);
+        updateBankButtonColours();
+    }
+
     if (onPadSelected)
         onPadSelected (selectedPad);
     repaint();
@@ -155,7 +184,7 @@ void PadGrid::setSelectedPad (int pad)
 
 int PadGrid::getPadAtPosition (int x, int y) const
 {
-    for (int i = 0; i < SamplerEngine::NUM_PADS; ++i)
+    for (int i = 0; i < SamplerEngine::PADS_PER_BANK; ++i)
     {
         if (getPadBounds (i).contains (x, y))
             return i;
@@ -163,16 +192,41 @@ int PadGrid::getPadAtPosition (int x, int y) const
     return -1;
 }
 
+juce::Rectangle<int> PadGrid::getGridArea() const
+{
+    auto area = getLocalBounds();
+    area.removeFromTop (28); // bank buttons
+    return area;
+}
+
 juce::Rectangle<int> PadGrid::getPadBounds (int padIndex) const
 {
+    auto gridArea = getGridArea();
     int cols = 4;
     int rows = 4;
     int col = padIndex % cols;
-    // Layout bottom-to-top like MPC (pad 0 = bottom-left)
     int row = rows - 1 - (padIndex / cols);
 
-    int padW = getWidth() / cols;
-    int padH = getHeight() / rows;
+    int padW = gridArea.getWidth() / cols;
+    int padH = gridArea.getHeight() / rows;
 
-    return { col * padW, row * padH, padW, padH };
+    return { gridArea.getX() + col * padW, gridArea.getY() + row * padH, padW, padH };
+}
+
+void PadGrid::updateBankButtonColours()
+{
+    int current = engine.getCurrentBank();
+    for (int b = 0; b < SamplerEngine::NUM_BANKS; ++b)
+    {
+        if (b == current)
+        {
+            bankButtons[b].setColour (juce::TextButton::buttonColourId, Colours_::accent);
+            bankButtons[b].setColour (juce::TextButton::textColourOffId, Colours_::textPrimary);
+        }
+        else
+        {
+            bankButtons[b].setColour (juce::TextButton::buttonColourId, Colours_::surface);
+            bankButtons[b].setColour (juce::TextButton::textColourOffId, Colours_::textSecondary);
+        }
+    }
 }

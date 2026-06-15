@@ -21,19 +21,25 @@ public:
     void fileDragExit (const juce::StringArray&) override;
 
     int getSelectedPad() const { return selectedPad; }
-    void setSelectedPad (int pad);
+    void setSelectedPad (int absolutePadIndex);
 
-    std::function<void (int padIndex)> onPadSelected;
-    std::function<void (int padIndex)> onSampleLoaded;
+    // Callbacks pass absolute pad indices
+    std::function<void (int absolutePadIndex)> onPadSelected;
+    std::function<void (int absolutePadIndex)> onSampleLoaded;
+    std::function<void (int bank)> onBankChanged;
 
 private:
     SamplerEngine& engine;
-    int selectedPad = 0;
+    int selectedPad = 0; // absolute pad index
     int hoveredPad = -1;
     bool dragOver = false;
 
-    int getPadAtPosition (int x, int y) const;
-    juce::Rectangle<int> getPadBounds (int padIndex) const;
+    juce::TextButton bankButtons[SamplerEngine::NUM_BANKS];
+
+    int getPadAtPosition (int x, int y) const; // returns bank-relative index
+    juce::Rectangle<int> getPadBounds (int bankRelativeIndex) const;
+    juce::Rectangle<int> getGridArea() const;
+    void updateBankButtonColours();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PadGrid)
 };

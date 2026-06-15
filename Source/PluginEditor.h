@@ -8,6 +8,7 @@
 #include "UI/EffectsPanel.h"
 #include "UI/SequencerGrid.h"
 #include "UI/CustomLookAndFeel.h"
+#include "UI/SoundBrowser.h"
 
 class GrooveStationEditor : public juce::AudioProcessorEditor
 {
@@ -32,6 +33,7 @@ private:
     MixerPanel      mixerPanel;
     EffectsPanel    effectsPanel;
     SequencerGrid   sequencerGrid;
+    SoundBrowser    soundBrowser;
 
     // Keyboard for MIDI
     juce::MidiKeyboardState keyboardState;

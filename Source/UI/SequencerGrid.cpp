@@ -194,7 +194,9 @@ void SequencerGrid::timerCallback()
 
 void SequencerGrid::setSelectedPad (int pad)
 {
-    selectedPad = juce::jlimit (0, SamplerEngine::NUM_PADS - 1, pad);
+    // Convert absolute pad index to bank-relative for sequencer display
+    int bankRelative = pad % SamplerEngine::PADS_PER_BANK;
+    selectedPad = juce::jlimit (0, SamplerEngine::PADS_PER_BANK - 1, bankRelative);
     repaint();
 }
 

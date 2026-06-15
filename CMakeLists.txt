@@ -39,6 +39,7 @@ target_sources(GrooveStation
         Source/UI/MixerPanel.cpp
         Source/UI/EffectsPanel.cpp
         Source/UI/SequencerGrid.cpp
+        Source/UI/SoundBrowser.cpp
         Source/UI/CustomLookAndFeel.cpp
 )
 

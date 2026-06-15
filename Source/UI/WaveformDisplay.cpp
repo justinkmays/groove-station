@@ -156,7 +156,7 @@ void WaveformDisplay::mouseDrag (const juce::MouseEvent& e)
 
 void WaveformDisplay::setPadIndex (int index)
 {
-    currentPad = juce::jlimit (0, SamplerEngine::NUM_PADS - 1, index);
+    currentPad = juce::jlimit (0, SamplerEngine::TOTAL_PADS - 1, index);
     repaint();
 }
 
