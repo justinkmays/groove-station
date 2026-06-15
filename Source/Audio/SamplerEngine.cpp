@@ -173,8 +173,8 @@ void SamplerEngine::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     for (int pad = 0; pad < TOTAL_PADS; ++pad)
     {
         if (! hasSample (pad)) continue;
-        if (padStates[pad].mute) continue;
-        if (anySolo && ! padStates[pad].solo) continue;
+
+        bool isSilenced = padStates[pad].mute || (anySolo && ! padStates[pad].solo);
 
         padBuffer.setSize (buffer.getNumChannels(), buffer.getNumSamples(), false, false, true);
         padBuffer.clear();
@@ -189,7 +189,10 @@ void SamplerEngine::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
                 padMidi.addEvent (msg, metadata.samplePosition);
         }
 
+        // Always render so voices can complete their lifecycle
         synthesisers[pad].renderNextBlock (padBuffer, padMidi, 0, padBuffer.getNumSamples());
+
+        if (isSilenced) continue; // discard output but voices still processed
 
         padEffects[pad].process (padBuffer);
 

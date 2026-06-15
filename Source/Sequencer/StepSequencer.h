@@ -7,6 +7,13 @@ class StepSequencer : public juce::HighResolutionTimer
 {
 public:
     static constexpr int MAX_PATTERNS = 16;
+    static constexpr int EVENT_FIFO_SIZE = 256;
+
+    struct PadEvent
+    {
+        int padIndex = -1;      // absolute pad index
+        float velocity = 0.0f;
+    };
 
     StepSequencer (SamplerEngine& engine);
     ~StepSequencer() override;
@@ -45,6 +52,9 @@ public:
     void setQuantize (Quantize q) { quantize = q; updateTimerInterval(); }
     Quantize getQuantize() const { return quantize; }
 
+    // Lock-free event consumption (called from audio thread)
+    void processPendingEvents();
+
     // Callback for UI updates
     std::function<void (int step)> onStepChanged;
 
@@ -66,6 +76,10 @@ private:
 
     bool playing = false;
     juce::Random random;
+
+    // Lock-free FIFO for timer→audio thread communication
+    juce::AbstractFifo eventFifo { EVENT_FIFO_SIZE };
+    PadEvent eventBuffer[EVENT_FIFO_SIZE];
 
     void advanceStep();
     void updateTimerInterval();

@@ -36,6 +36,7 @@ void GrooveStationProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 {
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
+    stepSequencer.processPendingEvents();
     samplerEngine.processBlock (buffer, midiMessages);
 }
 
@@ -71,7 +72,42 @@ void GrooveStationProcessor::getStateInformation (juce::MemoryBlock& destData)
         padXml->setAttribute ("decay", state.adsr.decay);
         padXml->setAttribute ("sustain", state.adsr.sustain);
         padXml->setAttribute ("release", state.adsr.release);
+
+        // Effects chain parameters
+        auto& fx = state.effects;
+        padXml->setAttribute ("fxFilterCutoff", fx.filterCutoff);
+        padXml->setAttribute ("fxFilterRes", fx.filterResonance);
+        padXml->setAttribute ("fxFilterType", fx.filterType);
+        padXml->setAttribute ("fxReverbMix", fx.reverbMix);
+        padXml->setAttribute ("fxReverbRoom", fx.reverbRoom);
+        padXml->setAttribute ("fxReverbDamp", fx.reverbDamp);
+        padXml->setAttribute ("fxDelayMix", fx.delayMix);
+        padXml->setAttribute ("fxDelayTime", fx.delayTime);
+        padXml->setAttribute ("fxDelayFB", fx.delayFeedback);
+        padXml->setAttribute ("fxDistAmt", fx.distortionAmount);
+        padXml->setAttribute ("fxDistMix", fx.distortionMix);
+        padXml->setAttribute ("fxEqLow", fx.eqLowGain);
+        padXml->setAttribute ("fxEqMid", fx.eqMidGain);
+        padXml->setAttribute ("fxEqHigh", fx.eqHighGain);
     }
+
+    // Save master effects
+    auto masterFx = samplerEngine.getMasterEffects().getParameters();
+    auto* masterFxXml = xml->createNewChildElement ("MasterEffects");
+    masterFxXml->setAttribute ("filterCutoff", masterFx.filterCutoff);
+    masterFxXml->setAttribute ("filterRes", masterFx.filterResonance);
+    masterFxXml->setAttribute ("filterType", masterFx.filterType);
+    masterFxXml->setAttribute ("reverbMix", masterFx.reverbMix);
+    masterFxXml->setAttribute ("reverbRoom", masterFx.reverbRoom);
+    masterFxXml->setAttribute ("reverbDamp", masterFx.reverbDamp);
+    masterFxXml->setAttribute ("delayMix", masterFx.delayMix);
+    masterFxXml->setAttribute ("delayTime", masterFx.delayTime);
+    masterFxXml->setAttribute ("delayFB", masterFx.delayFeedback);
+    masterFxXml->setAttribute ("distAmt", masterFx.distortionAmount);
+    masterFxXml->setAttribute ("distMix", masterFx.distortionMix);
+    masterFxXml->setAttribute ("eqLow", masterFx.eqLowGain);
+    masterFxXml->setAttribute ("eqMid", masterFx.eqMidGain);
+    masterFxXml->setAttribute ("eqHigh", masterFx.eqHighGain);
 
     // Save sequencer state
     auto* seqXml = xml->createNewChildElement ("Sequencer");
@@ -140,7 +176,45 @@ void GrooveStationProcessor::setStateInformation (const void* data, int sizeInBy
         state.adsr.sustain = (float) padXml->getDoubleAttribute ("sustain", 0.8);
         state.adsr.release = (float) padXml->getDoubleAttribute ("release", 0.3);
 
+        // Restore effects chain parameters
+        auto& fx = state.effects;
+        fx.filterCutoff     = (float) padXml->getDoubleAttribute ("fxFilterCutoff", 20000.0);
+        fx.filterResonance  = (float) padXml->getDoubleAttribute ("fxFilterRes", 0.707);
+        fx.filterType       = padXml->getIntAttribute ("fxFilterType", 0);
+        fx.reverbMix        = (float) padXml->getDoubleAttribute ("fxReverbMix", 0.0);
+        fx.reverbRoom       = (float) padXml->getDoubleAttribute ("fxReverbRoom", 0.5);
+        fx.reverbDamp       = (float) padXml->getDoubleAttribute ("fxReverbDamp", 0.5);
+        fx.delayMix         = (float) padXml->getDoubleAttribute ("fxDelayMix", 0.0);
+        fx.delayTime        = (float) padXml->getDoubleAttribute ("fxDelayTime", 0.3);
+        fx.delayFeedback    = (float) padXml->getDoubleAttribute ("fxDelayFB", 0.4);
+        fx.distortionAmount = (float) padXml->getDoubleAttribute ("fxDistAmt", 0.0);
+        fx.distortionMix    = (float) padXml->getDoubleAttribute ("fxDistMix", 0.0);
+        fx.eqLowGain        = (float) padXml->getDoubleAttribute ("fxEqLow", 0.0);
+        fx.eqMidGain        = (float) padXml->getDoubleAttribute ("fxEqMid", 0.0);
+        fx.eqHighGain       = (float) padXml->getDoubleAttribute ("fxEqHigh", 0.0);
+
         samplerEngine.updatePadParameters (index);
+    }
+
+    // Restore master effects
+    if (auto* masterFxXml = xml->getChildByName ("MasterEffects"))
+    {
+        EffectsChain::Parameters mfx;
+        mfx.filterCutoff     = (float) masterFxXml->getDoubleAttribute ("filterCutoff", 20000.0);
+        mfx.filterResonance  = (float) masterFxXml->getDoubleAttribute ("filterRes", 0.707);
+        mfx.filterType       = masterFxXml->getIntAttribute ("filterType", 0);
+        mfx.reverbMix        = (float) masterFxXml->getDoubleAttribute ("reverbMix", 0.0);
+        mfx.reverbRoom       = (float) masterFxXml->getDoubleAttribute ("reverbRoom", 0.5);
+        mfx.reverbDamp       = (float) masterFxXml->getDoubleAttribute ("reverbDamp", 0.5);
+        mfx.delayMix         = (float) masterFxXml->getDoubleAttribute ("delayMix", 0.0);
+        mfx.delayTime        = (float) masterFxXml->getDoubleAttribute ("delayTime", 0.3);
+        mfx.delayFeedback    = (float) masterFxXml->getDoubleAttribute ("delayFB", 0.4);
+        mfx.distortionAmount = (float) masterFxXml->getDoubleAttribute ("distAmt", 0.0);
+        mfx.distortionMix    = (float) masterFxXml->getDoubleAttribute ("distMix", 0.0);
+        mfx.eqLowGain        = (float) masterFxXml->getDoubleAttribute ("eqLow", 0.0);
+        mfx.eqMidGain        = (float) masterFxXml->getDoubleAttribute ("eqMid", 0.0);
+        mfx.eqHighGain       = (float) masterFxXml->getDoubleAttribute ("eqHigh", 0.0);
+        samplerEngine.getMasterEffects().setParameters (mfx);
     }
 
     // Restore bank

@@ -111,7 +111,7 @@ void SampleVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
 
         // Linear interpolation
         int pos0 = (int) samplePosition;
-        int pos1 = pos0 + (reverse ? -1 : 1);
+        int pos1 = pos0 + 1;
         pos0 = juce::jlimit (0, totalSamples - 1, pos0);
         pos1 = juce::jlimit (0, totalSamples - 1, pos1);
         float frac = (float)(samplePosition - (int) samplePosition);

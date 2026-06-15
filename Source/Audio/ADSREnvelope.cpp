@@ -84,5 +84,5 @@ void ADSREnvelope::recalculate()
 
     attackDelta  = 1.0f / attackSamples;
     decayDelta   = (1.0f - params.sustain) / decaySamples;
-    releaseDelta = params.sustain / releaseSamples;
+    releaseDelta = (params.sustain > 0.0f ? params.sustain : 1.0f) / releaseSamples;
 }

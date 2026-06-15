@@ -95,17 +95,21 @@ void StepSequencer::advanceStep()
     auto& pattern = getCurrentPattern();
     int numSteps = pattern.getNumSteps();
 
-    // Fire active steps for all pads
+    // Queue active steps into lock-free FIFO for audio thread consumption
     for (int pad = 0; pad < Pattern::NUM_PADS; ++pad)
     {
         auto& step = pattern.getStep (pad, currentStep);
         if (step.active)
         {
-            // Probability gate
             if (step.probability >= 1.0f || random.nextFloat() < step.probability)
             {
                 int absPad = samplerEngine.absolutePadIndex (pad);
-                samplerEngine.triggerPad (absPad, step.velocity);
+
+                const auto scope = eventFifo.write (1);
+                if (scope.blockSize1 > 0)
+                    eventBuffer[scope.startIndex1] = { absPad, step.velocity };
+                else if (scope.blockSize2 > 0)
+                    eventBuffer[scope.startIndex2] = { absPad, step.velocity };
             }
         }
     }
@@ -125,6 +129,25 @@ void StepSequencer::advanceStep()
     // Apply swing to next step timing
     if (playing)
         updateTimerInterval();
+}
+
+void StepSequencer::processPendingEvents()
+{
+    const auto scope = eventFifo.read (eventFifo.getNumReady());
+
+    for (int i = 0; i < scope.blockSize1; ++i)
+    {
+        auto& evt = eventBuffer[scope.startIndex1 + i];
+        if (evt.padIndex >= 0)
+            samplerEngine.triggerPad (evt.padIndex, evt.velocity);
+    }
+
+    for (int i = 0; i < scope.blockSize2; ++i)
+    {
+        auto& evt = eventBuffer[scope.startIndex2 + i];
+        if (evt.padIndex >= 0)
+            samplerEngine.triggerPad (evt.padIndex, evt.velocity);
+    }
 }
 
 void StepSequencer::updateTimerInterval()
